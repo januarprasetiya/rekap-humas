@@ -5,10 +5,32 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sistem Rekap Humas FKIP UAD</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- jQuery (diperlukan untuk Select2) -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <!-- Select2 -->
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         /* Simple transition for hidden class */
         .hidden { display: none; }
+        /* Style untuk Select2 agar sesuai dengan Tailwind */
+        .select2-container .select2-selection--single {
+            height: 42px;
+            border: 1px solid #d1d5db;
+            border-radius: 0.375rem;
+        }
+        .select2-container--default .select2-selection--single .select2-selection__rendered {
+            line-height: 40px;
+            padding-left: 12px;
+        }
+        .select2-container--default .select2-selection--single .select2-selection__arrow {
+            height: 40px;
+        }
+        .select2-dropdown {
+            border: 1px solid #d1d5db;
+            border-radius: 0.375rem;
+        }
     </style>
 </head>
 <body class="bg-gray-100 font-sans">
@@ -74,18 +96,10 @@
         const supabaseUrl = 'https://hhmqbfbzvskmfheeainf.supabase.co';
         const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhobXFiZmJ6dnNrbWZoZWVhaW5mIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY4NzI4MTQsImV4cCI6MjA3MjQ0ODgxNH0.zmI2ku95AnqPZx_DMh4mtXsiHjKsuP5PprJ5r_pApqA';
 
-        // Pemeriksaan Konfigurasi: Hentikan eksekusi jika placeholder belum diganti
+        // Pemeriksaan Konfigurasi
         if (supabaseUrl.startsWith('URL_PROYEK') || supabaseAnonKey.startsWith('KUNCI_ANON')) {
-            document.body.innerHTML = `
-                <div class="min-h-screen flex items-center justify-center bg-red-50 text-red-800 p-4">
-                    <div class="w-full max-w-lg p-8 bg-white shadow-lg rounded-lg border-2 border-red-300">
-                        <h1 class="text-2xl font-bold mb-4">Kesalahan Konfigurasi</h1>
-                        <p>Harap ganti nilai <code class="bg-red-100 p-1 rounded">URL_PROYEK_SUPABASE_ANDA</code> dan <code class="bg-red-100 p-1 rounded">KUNCI_ANON_SUPABASE_ANDA</code> di dalam file HTML (di dalam tag &lt;script&gt;) dengan kredensial Supabase Anda yang sebenarnya.</p>
-                        <p class="mt-2 text-sm">Anda bisa mendapatkan kredensial ini dari dasbor proyek Supabase Anda di bagian Settings > API.</p>
-                    </div>
-                </div>
-            `;
-            throw new Error("Supabase URL and Anon Key are not configured. Please edit the HTML file.");
+            document.body.innerHTML = `<div class="min-h-screen flex items-center justify-center bg-red-50 text-red-800 p-4"><div class="w-full max-w-lg p-8 bg-white shadow-lg rounded-lg border-2 border-red-300"><h1 class="text-2xl font-bold mb-4">Kesalahan Konfigurasi</h1><p>Harap ganti nilai <code class="bg-red-100 p-1 rounded">URL_PROYEK_SUPABASE_ANDA</code> dan <code class="bg-red-100 p-1 rounded">KUNCI_ANON_SUPABASE_ANDA</code> di dalam file HTML (di dalam tag &lt;script&gt;) dengan kredensial Supabase Anda yang sebenarnya.</p><p class="mt-2 text-sm">Anda bisa mendapatkan kredensial ini dari dasbor proyek Supabase Anda di bagian Settings > API.</p></div></div>`;
+            throw new Error("Supabase URL and Anon Key are not configured.");
         }
 
         const { createClient } = window.supabase;
@@ -96,7 +110,7 @@
         let academicYears = [];
         let schools = [];
         let agendas = [];
-        let activeMenu = 'sekolah';
+        let activeMenu = 'agenda'; // Default menu is now agenda
 
         // DOM Elements
         const loadingPage = document.getElementById('loading-page');
@@ -115,15 +129,11 @@
             loginButton.disabled = true;
             loginButton.textContent = 'Loading...';
             errorMessage.textContent = '';
-            
-            const email = document.getElementById('email').value;
-            const password = document.getElementById('password').value;
-
-            const { error } = await supabase.auth.signInWithPassword({ email, password });
-
-            if (error) {
-                errorMessage.textContent = error.message;
-            }
+            const { error } = await supabase.auth.signInWithPassword({ 
+                email: document.getElementById('email').value, 
+                password: document.getElementById('password').value 
+            });
+            if (error) errorMessage.textContent = error.message;
             loginButton.disabled = false;
             loginButton.textContent = 'Login';
         });
@@ -131,7 +141,6 @@
         logoutButton.addEventListener('click', () => {
             supabase.auth.signOut();
         });
-
 
         // --- UI TOGGLING & MAIN APP LOGIC ---
         function showPage(page) {
@@ -141,17 +150,16 @@
             page.classList.remove('hidden');
         }
         
-        // Listen for auth state changes
         supabase.auth.onAuthStateChange((_event, session) => {
             if (session) {
                 showPage(dashboardPage);
-                initializeApp();
+                if(!window.appInitialized) initializeApp();
             } else {
+                window.appInitialized = false;
                 showPage(authPage);
             }
         });
 
-        // Initial check
         supabase.auth.getSession().then(({ data: { session } }) => {
             if (session) {
                 showPage(dashboardPage);
@@ -163,14 +171,14 @@
             console.error("Error getting session:", err);
             showPage(authPage);
         });
-
+        
         // --- DASHBOARD INITIALIZATION ---
         async function initializeApp() {
+            window.appInitialized = true;
             renderMenu();
             await fetchData();
             renderContent();
             
-            // Listen for real-time changes
             supabase.channel('public-schema-changes')
                 .on('postgres_changes', { event: '*', schema: 'public' }, () => {
                     fetchDataAndRender();
@@ -196,9 +204,10 @@
         function renderMenu() {
             const menuContainer = document.getElementById('menu-container');
             const menuItems = [
-                { key: 'tahunAkademik', label: 'Tahun Akademik' }, 
+                { key: 'agenda', label: 'Agenda Humas' },
                 { key: 'sekolah', label: 'Data Sekolah' }, 
-                { key: 'agenda', label: 'Agenda Humas' }
+                { key: 'tahunAkademik', label: 'Tahun Akademik' }, 
+                { key: 'profil', label: 'Profil' }
             ];
 
             menuContainer.innerHTML = menuItems.map(item => `
@@ -212,7 +221,7 @@
             document.querySelectorAll('.menu-button').forEach(button => {
                 button.addEventListener('click', (e) => {
                     activeMenu = e.target.dataset.menu;
-                    renderMenu(); // Re-render menu for active state
+                    renderMenu();
                     renderContent();
                 });
             });
@@ -230,25 +239,74 @@
                 case 'agenda': 
                     renderMasterDataView({ title: 'Agenda Humas dan Promosi', data: agendas, fields: agendaFields(schools, academicYears), tableName: 'agendas' });
                     break;
+                case 'profil':
+                    renderProfileView();
+                    break;
                 default: 
                     contentSection.innerHTML = '<div class="text-center p-8">Silakan pilih menu</div>';
              }
         }
         
+        function renderProfileView() {
+            contentSection.innerHTML = `
+                <div class="bg-white p-6 rounded-lg shadow-md">
+                    <h2 class="text-xl font-bold text-gray-800 mb-4">Ubah Password</h2>
+                    <form id="password-form" class="space-y-4 max-w-sm">
+                        <div>
+                            <label for="new-password" class="block text-sm font-medium text-gray-600 mb-1">Password Baru</label>
+                            <input type="password" id="new-password" name="new-password" required class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                        </div>
+                        <div>
+                            <label for="confirm-password" class="block text-sm font-medium text-gray-600 mb-1">Konfirmasi Password Baru</label>
+                            <input type="password" id="confirm-password" name="confirm-password" required class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                        </div>
+                        <p id="password-error" class="text-red-500 text-sm"></p>
+                        <p id="password-success" class="text-green-500 text-sm"></p>
+                        <div class="pt-2">
+                             <button type="submit" class="px-4 py-2 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700">Update Password</button>
+                        </div>
+                    </form>
+                </div>
+            `;
+
+            document.getElementById('password-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const newPassword = document.getElementById('new-password').value;
+                const confirmPassword = document.getElementById('confirm-password').value;
+                const errorEl = document.getElementById('password-error');
+                const successEl = document.getElementById('password-success');
+
+                errorEl.textContent = '';
+                successEl.textContent = '';
+
+                if (newPassword.length < 6) {
+                    errorEl.textContent = 'Password minimal harus 6 karakter.';
+                    return;
+                }
+                if (newPassword !== confirmPassword) {
+                    errorEl.textContent = 'Password tidak cocok.';
+                    return;
+                }
+
+                const { error } = await supabase.auth.updateUser({ password: newPassword });
+                
+                if (error) {
+                    errorEl.textContent = `Gagal: ${error.message}`;
+                } else {
+                    successEl.textContent = 'Password berhasil diubah!';
+                    e.target.reset();
+                }
+            });
+        }
+
         function renderMasterDataView({ title, data, fields, tableName }) {
-            // HTML structure for form and table
             contentSection.innerHTML = `
                 <div class="bg-white p-6 rounded-lg shadow-md">
                     <div class="mb-6 pb-4 border-b">
                         <h2 id="form-title" class="text-xl font-bold text-gray-800">Tambah ${title}</h2>
                         <form id="master-form" class="mt-4 space-y-4">
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                ${fields.map(field => `
-                                    <div class="${field.fullWidth ? 'md:col-span-2' : ''}">
-                                        <label class="block text-sm font-medium text-gray-600 mb-1">${field.label}</label>
-                                        ${generateFieldHtml(field)}
-                                    </div>
-                                `).join('')}
+                                ${fields.map(field => `<div class="${field.fullWidth ? 'md:col-span-2' : ''}"><label class="block text-sm font-medium text-gray-600 mb-1">${field.label}</label>${generateFieldHtml(field)}</div>`).join('')}
                             </div>
                             <div id="form-buttons" class="flex items-center gap-4 pt-2">
                                 <button type="submit" class="px-4 py-2 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700">Simpan Data</button>
@@ -258,62 +316,30 @@
                     <div>
                         <div class="flex justify-between items-center mb-4">
                            <h2 class="text-xl font-bold text-gray-800">Daftar ${title}</h2>
-                           ${tableName === 'agendas' ? `
-                                <div>
-                                    <label for="year-filter" class="text-sm font-medium text-gray-600 mr-2">Sortir per Tahun Akademik:</label>
-                                    <select id="year-filter" class="p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
-                                        <option value="all">Tampilkan Semua</option>
-                                        ${academicYears.map(year => `<option value="${year.id}">${year.name}</option>`).join('')}
-                                    </select>
-                                </div>
-                           ` : ''}
+                           ${tableName === 'agendas' ? `<div class="w-1/2"><label for="year-filter" class="text-sm font-medium text-gray-600 mr-2">Sortir per Tahun Akademik:</label><select id="year-filter" class="p-2 border border-gray-300 rounded-md shadow-sm w-full"><option value="all">Tampilkan Semua</option>${academicYears.map(year => `<option value="${year.id}">${year.name}</option>`).join('')}</select></div>` : ''}
                         </div>
-                        <div class="overflow-x-auto">
-                            <table class="min-w-full bg-white border">
-                                <thead class="bg-gray-50">
-                                    <tr>
-                                        ${fields.map(field => `<th class="py-2 px-4 border-b text-left text-sm font-semibold text-gray-600">${field.label}</th>`).join('')}
-                                        <th class="py-2 px-4 border-b text-left text-sm font-semibold text-gray-600">Aksi</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="table-body" class="text-gray-700">
-                                    <!-- Table rows will be injected here -->
-                                </tbody>
-                            </table>
-                        </div>
+                        <div class="overflow-x-auto"><table class="min-w-full bg-white border"><thead class="bg-gray-50"><tr>${fields.map(field => `<th class="py-2 px-4 border-b text-left text-sm font-semibold text-gray-600">${field.label}</th>`).join('')}<th class="py-2 px-4 border-b text-left text-sm font-semibold text-gray-600">Aksi</th></tr></thead><tbody id="table-body" class="text-gray-700"></tbody></table></div>
                     </div>
                 </div>`;
 
             const tableBody = document.getElementById('table-body');
             
             function renderTableBody(dataToRender) {
-                 if (dataToRender.length === 0) {
-                    tableBody.innerHTML = `<tr><td colspan="${fields.length + 1}" class="text-center py-4">Tidak ada data.</td></tr>`;
-                } else {
-                    tableBody.innerHTML = dataToRender.map(item => `
-                        <tr class="hover:bg-gray-50">
-                            ${fields.map(field => {
-                                let cellValue = item[field.name] || '';
-                                if (tableName === 'agendas' && field.name === 'academic_year_id') {
-                                    const year = academicYears.find(y => y.id === cellValue);
-                                    cellValue = year ? year.name : 'Tidak Diketahui';
-                                }
-                                return `<td class="py-2 px-4 border-b text-sm align-top">${cellValue}</td>`
-                            }).join('')}
-                            <td class="py-2 px-4 border-b text-sm align-top">
-                                <div class="flex gap-2">
-                                    <button data-id="${item.id}" class="edit-btn text-blue-500 hover:text-blue-700 font-medium">Edit</button>
-                                    <button data-id="${item.id}" class="delete-btn text-red-500 hover:text-red-700 font-medium">Hapus</button>
-                                </div>
-                            </td>
-                        </tr>
-                    `).join('');
-                }
+                 tableBody.innerHTML = dataToRender.length === 0 ? `<tr><td colspan="${fields.length + 1}" class="text-center py-4">Tidak ada data.</td></tr>` : dataToRender.map(item => `
+                    <tr class="hover:bg-gray-50">
+                        ${fields.map(field => {
+                            let cellValue = item[field.name] || '';
+                            if (tableName === 'agendas' && field.name === 'academic_year_id') {
+                                const year = academicYears.find(y => y.id == cellValue);
+                                cellValue = year ? year.name : 'Tidak Diketahui';
+                            }
+                            return `<td class="py-2 px-4 border-b text-sm align-top">${cellValue}</td>`
+                        }).join('')}
+                        <td class="py-2 px-4 border-b text-sm align-top"><div class="flex gap-2"><button data-id="${item.id}" class="edit-btn text-blue-500 hover:text-blue-700 font-medium">Edit</button><button data-id="${item.id}" class="delete-btn text-red-500 hover:text-red-700 font-medium">Hapus</button></div></td>
+                    </tr>`).join('');
             }
-            
-            renderTableBody(data); // Initial render
+            renderTableBody(data);
 
-            // Add event listeners for form and buttons
             let isEditing = null;
             const masterForm = document.getElementById('master-form');
             const formTitle = document.getElementById('form-title');
@@ -324,62 +350,61 @@
                 const formData = new FormData(e.target);
                 const dataToSubmit = Object.fromEntries(formData.entries());
                 
-                const { error } = isEditing 
-                    ? await supabase.from(tableName).update(dataToSubmit).eq('id', isEditing.id) 
-                    : await supabase.from(tableName).insert([dataToSubmit]);
+                const { error } = isEditing ? await supabase.from(tableName).update(dataToSubmit).eq('id', isEditing.id) : await supabase.from(tableName).insert([dataToSubmit]);
                 
                 if (error) alert(`Gagal: ${error.message}`);
                 else {
                     isEditing = null;
                     masterForm.reset();
+                    if(tableName === 'agendas') {
+                        $('[name="academic_year_id"]').val(null).trigger('change');
+                        $('[name="school"]').val(null).trigger('change');
+                    }
                     formTitle.textContent = `Tambah ${title}`;
                     formButtons.innerHTML = `<button type="submit" class="px-4 py-2 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700">Simpan Data</button>`;
                     fetchDataAndRender();
                 }
             });
             
-            document.querySelectorAll('.edit-btn').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    const id = e.target.dataset.id;
-                    const item = data.find(d => d.id == id);
-                    isEditing = item;
-                    
-                    fields.forEach(field => {
-                        masterForm.elements[field.name].value = item[field.name] || '';
-                    });
-                    
-                    formTitle.textContent = `Edit ${title}`;
-                    formButtons.innerHTML = `
-                        <button type="submit" class="px-4 py-2 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700">Update Data</button>
-                        <button type="button" id="cancel-btn" class="px-4 py-2 bg-gray-500 text-white font-semibold rounded-md hover:bg-gray-600">Batal</button>
-                    `;
-                    document.getElementById('cancel-btn').addEventListener('click', () => {
-                         isEditing = null;
-                         masterForm.reset();
-                         formTitle.textContent = `Tambah ${title}`;
-                         formButtons.innerHTML = `<button type="submit" class="px-4 py-2 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700">Simpan Data</button>`;
-                    });
-                    window.scrollTo(0, 0);
-                });
-            });
-
-            document.querySelectorAll('.delete-btn').forEach(btn => {
-                btn.addEventListener('click', async (e) => {
-                    if (confirm('Apakah Anda yakin?')) {
-                        const id = e.target.dataset.id;
-                        await supabase.from(tableName).delete().eq('id', id);
-                        fetchDataAndRender();
+            document.querySelectorAll('.edit-btn').forEach(btn => btn.addEventListener('click', (e) => {
+                const id = e.target.dataset.id;
+                isEditing = data.find(d => d.id == id);
+                fields.forEach(field => {
+                    const value = isEditing[field.name] || '';
+                    masterForm.elements[field.name].value = value;
+                    if (tableName === 'agendas' && (field.name === 'academic_year_id' || field.name === 'school')) {
+                        $(`[name="${field.name}"]`).val(value).trigger('change');
                     }
                 });
-            });
+                
+                formTitle.textContent = `Edit ${title}`;
+                formButtons.innerHTML = `<button type="submit" class="px-4 py-2 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700">Update Data</button><button type="button" id="cancel-btn" class="px-4 py-2 bg-gray-500 text-white font-semibold rounded-md hover:bg-gray-600">Batal</button>`;
+                document.getElementById('cancel-btn').addEventListener('click', () => {
+                     isEditing = null;
+                     masterForm.reset();
+                     if(tableName === 'agendas') {
+                        $('[name="academic_year_id"]').val(null).trigger('change');
+                        $('[name="school"]').val(null).trigger('change');
+                     }
+                     formTitle.textContent = `Tambah ${title}`;
+                     formButtons.innerHTML = `<button type="submit" class="px-4 py-2 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700">Simpan Data</button>`;
+                });
+                window.scrollTo(0, 0);
+            }));
+
+            document.querySelectorAll('.delete-btn').forEach(btn => btn.addEventListener('click', async (e) => {
+                if (confirm('Apakah Anda yakin?')) {
+                    await supabase.from(tableName).delete().eq('id', e.target.dataset.id);
+                    fetchDataAndRender();
+                }
+            }));
 
             if (tableName === 'agendas') {
+                $('[name="academic_year_id"], [name="school"]').select2();
                 const yearFilter = document.getElementById('year-filter');
                 yearFilter.addEventListener('change', (e) => {
                     const selectedYearId = e.target.value;
-                    const filteredData = selectedYearId === 'all'
-                        ? data
-                        : data.filter(item => item.academic_year_id === parseInt(selectedYearId));
+                    const filteredData = selectedYearId === 'all' ? data : data.filter(item => item.academic_year_id == selectedYearId);
                     renderTableBody(filteredData);
                 });
             }
@@ -388,32 +413,17 @@
         function generateFieldHtml(field) {
             const commonClasses = "w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500";
             const requiredAttr = field.required !== false ? 'required' : '';
-
             switch(field.type) {
-                case 'select':
-                    return `
-                        <select name="${field.name}" class="${commonClasses}" ${requiredAttr}>
-                            <option value="" disabled selected>Pilih ${field.label}</option>
-                            ${field.options.map(opt => `<option value="${opt.value}">${opt.label}</option>`).join('')}
-                        </select>`;
-                case 'textarea':
-                    return `<textarea name="${field.name}" rows="3" class="${commonClasses}"></textarea>`;
-                default:
-                    return `<input type="${field.type}" name="${field.name}" class="${commonClasses}" ${requiredAttr} />`;
+                case 'select': return `<select name="${field.name}" class="${commonClasses}" ${requiredAttr}><option></option>${field.options.map(opt => `<option value="${opt.value}">${opt.label}</option>`).join('')}</select>`;
+                case 'textarea': return `<textarea name="${field.name}" rows="3" class="${commonClasses}"></textarea>`;
+                default: return `<input type="${field.type}" name="${field.name}" class="${commonClasses}" ${requiredAttr} />`;
             }
         }
 
         // --- FIELD DEFINITIONS ---
         const academicYearFields = [{ name: 'name', label: 'Nama Tahun Akademik', type: 'text' }, { name: 'start', label: 'Tanggal Mulai', type: 'date' }, { name: 'end', label: 'Tanggal Selesai', type: 'date' }];
         const schoolFields = [{ name: 'name', label: 'Nama Sekolah', type: 'text', fullWidth: true }, { name: 'address', label: 'Alamat', type: 'textarea', fullWidth: true, required: false }, { name: 'pic', label: 'Penanggung Jawab', type: 'text', required: false }, { name: 'whatsapp', label: 'WhatsApp PJ', type: 'text', required: false }, { name: 'email', label: 'Email', type: 'email', required: false }, { name: 'instagram', label: 'Instagram', type: 'text', required: false }, { name: 'tiktok', label: 'TikTok', type: 'text', required: false }];
-        const agendaFields = (schools, academicYears) => [
-            { name: 'academic_year_id', label: 'Tahun Akademik', type: 'select', options: academicYears.map(y => ({ value: y.id, label: y.name })) }, 
-            { name: 'type', label: 'Jenis Agenda', type: 'select', options: [{ value: 'Kunjungan Akademik', label: 'Kunjungan Akademik' }, { value: 'AMT/Pelatihan', label: 'AMT/Pelatihan' }, { value: 'Campus Tour', label: 'Campus Tour' }] }, 
-            { name: 'school', label: 'Sekolah Tujuan', type: 'select', options: schools.map(s => ({ value: s.name, label: s.name })) }, 
-            { name: 'date', label: 'Tanggal Pelaksanaan', type: 'date' }, 
-            { name: 'description', label: 'Keterangan Singkat', type: 'textarea', fullWidth: true, required: false }
-        ];
-
+        const agendaFields = (schools, academicYears) => [ { name: 'academic_year_id', label: 'Tahun Akademik', type: 'select', options: academicYears.map(y => ({ value: y.id, label: y.name })) }, { name: 'type', label: 'Jenis Agenda', type: 'select', options: [{ value: 'Kunjungan Akademik', label: 'Kunjungan Akademik' }, { value: 'AMT/Pelatihan', label: 'AMT/Pelatihan' }, { value: 'Campus Tour', label: 'Campus Tour' }] }, { name: 'school', label: 'Sekolah Tujuan', type: 'select', options: schools.map(s => ({ value: s.name, label: s.name })) }, { name: 'date', label: 'Tanggal Pelaksanaan', type: 'date' }, { name: 'description', label: 'Keterangan Singkat', type: 'textarea', fullWidth: true, required: false } ];
     </script>
 </body>
 </html>
