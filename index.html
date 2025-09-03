@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistem Rekap Humas FKIP UAD</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        /* Simple transition for hidden class */
+        .hidden { display: none; }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans">
+
+    <!-- Halaman Loading Awal -->
+    <div id="loading-page" class="min-h-screen flex items-center justify-center">
+        <p class="text-gray-600">Memuat Aplikasi...</p>
+    </div>
+
+    <!-- Halaman Login -->
+    <div id="auth-page" class="hidden">
+        <div class="min-h-screen bg-gray-100 flex items-center justify-center">
+            <div class="w-full max-w-md p-8 space-y-6 bg-white rounded-lg shadow-md">
+                <h1 class="text-2xl font-bold text-center text-gray-800">Login Admin</h1>
+                <p class="text-center text-gray-600">Sistem Rekap Humas & Promosi FKIP UAD</p>
+                <form id="login-form" class="space-y-6">
+                    <div>
+                        <label class="text-sm font-bold text-gray-600 block">Email</label>
+                        <input id="email" class="w-full p-2 border border-gray-300 rounded-md mt-1 focus:outline-none focus:ring-2 focus:ring-blue-500" type="email" required />
+                    </div>
+                    <div>
+                        <label class="text-sm font-bold text-gray-600 block">Password</label>
+                        <input id="password" class="w-full p-2 border border-gray-300 rounded-md mt-1 focus:outline-none focus:ring-2 focus:ring-blue-500" type="password" required />
+                    </div>
+                    <p id="error-message" class="text-red-500 text-sm text-center"></p>
+                    <div>
+                        <button id="login-button" type="submit" class="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 rounded-md text-white text-sm font-semibold">
+                            Login
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Halaman Dashboard Utama -->
+    <div id="dashboard-page" class="hidden">
+        <header class="bg-blue-800 text-white shadow-md">
+            <div class="container mx-auto p-4 flex justify-between items-center">
+                <h1 class="text-2xl font-bold">Rekap Humas & Promosi FKIP UAD</h1>
+                <button id="logout-button" class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded">Logout</button>
+            </div>
+        </header>
+        <main class="container mx-auto p-4">
+            <div class="flex flex-col md:flex-row gap-6">
+                <aside class="md:w-1/4">
+                    <div class="bg-white p-4 rounded-lg shadow-md">
+                        <h2 class="text-lg font-semibold mb-3 border-b pb-2">Menu Master</h2>
+                        <ul id="menu-container" class="space-y-2">
+                           <!-- Menu items will be injected here by JS -->
+                        </ul>
+                    </div>
+                </aside>
+                <section id="content-section" class="md:w-3/4">
+                    <!-- Content will be injected here by JS -->
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <script type="module">
+        // --- KONFIGURASI SUPABASE ---
+        const supabaseUrl = 'https://hhmqbfbzvskmfheeainf.supabase.co';
+        const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhobXFiZmJ6dnNrbWZoZWVhaW5mIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY4NzI4MTQsImV4cCI6MjA3MjQ0ODgxNH0.zmI2ku95AnqPZx_DMh4mtXsiHjKsuP5PprJ5r_pApqA';
+
+        // Pemeriksaan Konfigurasi: Hentikan eksekusi jika placeholder belum diganti
+        if (supabaseUrl.startsWith('URL_PROYEK') || supabaseAnonKey.startsWith('KUNCI_ANON')) {
+            document.body.innerHTML = `
+                <div class="min-h-screen flex items-center justify-center bg-red-50 text-red-800 p-4">
+                    <div class="w-full max-w-lg p-8 bg-white shadow-lg rounded-lg border-2 border-red-300">
+                        <h1 class="text-2xl font-bold mb-4">Kesalahan Konfigurasi</h1>
+                        <p>Harap ganti nilai <code class="bg-red-100 p-1 rounded">URL_PROYEK_SUPABASE_ANDA</code> dan <code class="bg-red-100 p-1 rounded">KUNCI_ANON_SUPABASE_ANDA</code> di dalam file HTML (di dalam tag &lt;script&gt;) dengan kredensial Supabase Anda yang sebenarnya.</p>
+                        <p class="mt-2 text-sm">Anda bisa mendapatkan kredensial ini dari dasbor proyek Supabase Anda di bagian Settings > API.</p>
+                    </div>
+                </div>
+            `;
+            throw new Error("Supabase URL and Anon Key are not configured. Please edit the HTML file.");
+        }
+
+        const { createClient } = window.supabase;
+        const supabase = createClient(supabaseUrl, supabaseAnonKey);
+        // -------------------------
+
+        // State management variables
+        let academicYears = [];
+        let schools = [];
+        let agendas = [];
+        let activeMenu = 'sekolah';
+
+        // DOM Elements
+        const loadingPage = document.getElementById('loading-page');
+        const authPage = document.getElementById('auth-page');
+        const dashboardPage = document.getElementById('dashboard-page');
+        const contentSection = document.getElementById('content-section');
+
+        // --- AUTHENTICATION ---
+        const loginForm = document.getElementById('login-form');
+        const loginButton = document.getElementById('login-button');
+        const logoutButton = document.getElementById('logout-button');
+        const errorMessage = document.getElementById('error-message');
+
+        loginForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            loginButton.disabled = true;
+            loginButton.textContent = 'Loading...';
+            errorMessage.textContent = '';
+            
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+
+            const { error } = await supabase.auth.signInWithPassword({ email, password });
+
+            if (error) {
+                errorMessage.textContent = error.message;
+            }
+            loginButton.disabled = false;
+            loginButton.textContent = 'Login';
+        });
+
+        logoutButton.addEventListener('click', () => {
+            supabase.auth.signOut();
+        });
+
+
+        // --- UI TOGGLING & MAIN APP LOGIC ---
+        function showPage(page) {
+            loadingPage.classList.add('hidden');
+            authPage.classList.add('hidden');
+            dashboardPage.classList.add('hidden');
+            page.classList.remove('hidden');
+        }
+        
+        // Listen for auth state changes
+        supabase.auth.onAuthStateChange((_event, session) => {
+            if (session) {
+                showPage(dashboardPage);
+                initializeApp();
+            } else {
+                showPage(authPage);
+            }
+        });
+
+        // Initial check
+        supabase.auth.getSession().then(({ data: { session } }) => {
+            if (session) {
+                showPage(dashboardPage);
+                initializeApp();
+            } else {
+                showPage(authPage);
+            }
+        }).catch(err => {
+            console.error("Error getting session:", err);
+            showPage(authPage);
+        });
+
+        // --- DASHBOARD INITIALIZATION ---
+        async function initializeApp() {
+            renderMenu();
+            await fetchData();
+            renderContent();
+            
+            // Listen for real-time changes
+            supabase.channel('public-schema-changes')
+                .on('postgres_changes', { event: '*', schema: 'public' }, () => {
+                    fetchDataAndRender();
+                })
+                .subscribe();
+        }
+
+        async function fetchData() {
+            const { data: yearsData } = await supabase.from('academic_years').select('*').order('start', { ascending: false });
+            const { data: schoolsData } = await supabase.from('schools').select('*').order('name');
+            const { data: agendasData } = await supabase.from('agendas').select('*').order('date', { ascending: false });
+            academicYears = yearsData || [];
+            schools = schoolsData || [];
+            agendas = agendasData || [];
+        }
+
+        async function fetchDataAndRender() {
+            await fetchData();
+            renderContent();
+        }
+        
+        // --- RENDERING FUNCTIONS ---
+        function renderMenu() {
+            const menuContainer = document.getElementById('menu-container');
+            const menuItems = [
+                { key: 'tahunAkademik', label: 'Tahun Akademik' }, 
+                { key: 'sekolah', label: 'Data Sekolah' }, 
+                { key: 'agenda', label: 'Agenda Humas' }
+            ];
+
+            menuContainer.innerHTML = menuItems.map(item => `
+                <li>
+                    <button data-menu="${item.key}" class="menu-button w-full text-left px-4 py-2 rounded-md transition-colors duration-200 ${activeMenu === item.key ? 'bg-blue-600 text-white shadow' : 'bg-gray-50 hover:bg-gray-200 text-gray-700'}">
+                        ${item.label}
+                    </button>
+                </li>
+            `).join('');
+
+            document.querySelectorAll('.menu-button').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    activeMenu = e.target.dataset.menu;
+                    renderMenu(); // Re-render menu for active state
+                    renderContent();
+                });
+            });
+        }
+        
+        function renderContent() {
+             contentSection.innerHTML = '<div class="text-center p-8">Memuat data...</div>';
+             switch (activeMenu) {
+                case 'tahunAkademik': 
+                    renderMasterDataView({ title: 'Tahun Akademik', data: academicYears, fields: academicYearFields, tableName: 'academic_years' });
+                    break;
+                case 'sekolah': 
+                    renderMasterDataView({ title: 'Data Sekolah', data: schools, fields: schoolFields, tableName: 'schools' });
+                    break;
+                case 'agenda': 
+                    renderMasterDataView({ title: 'Agenda Humas dan Promosi', data: agendas, fields: agendaFields(schools), tableName: 'agendas' });
+                    break;
+                default: 
+                    contentSection.innerHTML = '<div class="text-center p-8">Silakan pilih menu</div>';
+             }
+        }
+        
+        function renderMasterDataView({ title, data, fields, tableName }) {
+            // HTML structure for form and table
+            contentSection.innerHTML = `
+                <div class="bg-white p-6 rounded-lg shadow-md">
+                    <div class="mb-6 pb-4 border-b">
+                        <h2 id="form-title" class="text-xl font-bold text-gray-800">Tambah ${title}</h2>
+                        <form id="master-form" class="mt-4 space-y-4">
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                ${fields.map(field => `
+                                    <div class="${field.fullWidth ? 'md:col-span-2' : ''}">
+                                        <label class="block text-sm font-medium text-gray-600 mb-1">${field.label}</label>
+                                        ${generateFieldHtml(field)}
+                                    </div>
+                                `).join('')}
+                            </div>
+                            <div id="form-buttons" class="flex items-center gap-4 pt-2">
+                                <button type="submit" class="px-4 py-2 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700">Simpan Data</button>
+                            </div>
+                        </form>
+                    </div>
+                    <div>
+                        <h2 class="text-xl font-bold text-gray-800 mb-4">Daftar ${title}</h2>
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full bg-white border">
+                                <thead class="bg-gray-50">
+                                    <tr>
+                                        ${fields.map(field => `<th class="py-2 px-4 border-b text-left text-sm font-semibold text-gray-600">${field.label}</th>`).join('')}
+                                        <th class="py-2 px-4 border-b text-left text-sm font-semibold text-gray-600">Aksi</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="table-body" class="text-gray-700">
+                                    <!-- Table rows will be injected here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>`;
+
+            // Render table body
+            const tableBody = document.getElementById('table-body');
+            if (data.length === 0) {
+                tableBody.innerHTML = `<tr><td colspan="${fields.length + 1}" class="text-center py-4">Tidak ada data.</td></tr>`;
+            } else {
+                tableBody.innerHTML = data.map(item => `
+                    <tr class="hover:bg-gray-50">
+                        ${fields.map(field => `<td class="py-2 px-4 border-b text-sm align-top">${item[field.name] || ''}</td>`).join('')}
+                        <td class="py-2 px-4 border-b text-sm align-top">
+                            <div class="flex gap-2">
+                                <button data-id="${item.id}" class="edit-btn text-blue-500 hover:text-blue-700 font-medium">Edit</button>
+                                <button data-id="${item.id}" class="delete-btn text-red-500 hover:text-red-700 font-medium">Hapus</button>
+                            </div>
+                        </td>
+                    </tr>
+                `).join('');
+            }
+
+            // Add event listeners for form and buttons
+            let isEditing = null;
+            const masterForm = document.getElementById('master-form');
+            const formTitle = document.getElementById('form-title');
+            const formButtons = document.getElementById('form-buttons');
+
+            masterForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.target);
+                const dataToSubmit = Object.fromEntries(formData.entries());
+                
+                const { error } = isEditing 
+                    ? await supabase.from(tableName).update(dataToSubmit).eq('id', isEditing.id) 
+                    : await supabase.from(tableName).insert([dataToSubmit]);
+                
+                if (error) alert(`Gagal: ${error.message}`);
+                else {
+                    isEditing = null;
+                    masterForm.reset();
+                    formTitle.textContent = `Tambah ${title}`;
+                    formButtons.innerHTML = `<button type="submit" class="px-4 py-2 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700">Simpan Data</button>`;
+                    fetchDataAndRender();
+                }
+            });
+            
+            document.querySelectorAll('.edit-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const id = e.target.dataset.id;
+                    const item = data.find(d => d.id == id);
+                    isEditing = item;
+                    
+                    fields.forEach(field => {
+                        masterForm.elements[field.name].value = item[field.name] || '';
+                    });
+                    
+                    formTitle.textContent = `Edit ${title}`;
+                    formButtons.innerHTML = `
+                        <button type="submit" class="px-4 py-2 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700">Update Data</button>
+                        <button type="button" id="cancel-btn" class="px-4 py-2 bg-gray-500 text-white font-semibold rounded-md hover:bg-gray-600">Batal</button>
+                    `;
+                    document.getElementById('cancel-btn').addEventListener('click', () => {
+                         isEditing = null;
+                         masterForm.reset();
+                         formTitle.textContent = `Tambah ${title}`;
+                         formButtons.innerHTML = `<button type="submit" class="px-4 py-2 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700">Simpan Data</button>`;
+                    });
+                    window.scrollTo(0, 0);
+                });
+            });
+
+            document.querySelectorAll('.delete-btn').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    if (confirm('Apakah Anda yakin?')) {
+                        const id = e.target.dataset.id;
+                        await supabase.from(tableName).delete().eq('id', id);
+                        fetchDataAndRender();
+                    }
+                });
+            });
+        }
+        
+        function generateFieldHtml(field) {
+            const commonClasses = "w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500";
+            const requiredAttr = field.required !== false ? 'required' : '';
+
+            switch(field.type) {
+                case 'select':
+                    return `
+                        <select name="${field.name}" class="${commonClasses}" ${requiredAttr}>
+                            <option value="" disabled selected>Pilih ${field.label}</option>
+                            ${field.options.map(opt => `<option value="${opt.value}">${opt.label}</option>`).join('')}
+                        </select>`;
+                case 'textarea':
+                    return `<textarea name="${field.name}" rows="3" class="${commonClasses}"></textarea>`;
+                default:
+                    return `<input type="${field.type}" name="${field.name}" class="${commonClasses}" ${requiredAttr} />`;
+            }
+        }
+
+        // --- FIELD DEFINITIONS ---
+        const academicYearFields = [{ name: 'name', label: 'Nama Tahun Akademik', type: 'text' }, { name: 'start', label: 'Tanggal Mulai', type: 'date' }, { name: 'end', label: 'Tanggal Selesai', type: 'date' }];
+        const schoolFields = [{ name: 'name', label: 'Nama Sekolah', type: 'text', fullWidth: true }, { name: 'address', label: 'Alamat', type: 'textarea', fullWidth: true, required: false }, { name: 'pic', label: 'Penanggung Jawab', type: 'text', required: false }, { name: 'whatsapp', label: 'WhatsApp PJ', type: 'text', required: false }, { name: 'email', label: 'Email', type: 'email', required: false }, { name: 'instagram', label: 'Instagram', type: 'text', required: false }, { name: 'tiktok', label: 'TikTok', type: 'text', required: false }];
+        const agendaFields = (schools) => [{ name: 'type', label: 'Jenis Agenda', type: 'select', options: [{ value: 'Kunjungan Akademik', label: 'Kunjungan Akademik' }, { value: 'AMT/Pelatihan', label: 'AMT/Pelatihan' }, { value: 'Campus Tour', label: 'Campus Tour' }] }, { name: 'school', label: 'Sekolah Tujuan', type: 'select', options: schools.map(s => ({ value: s.name, label: s.name })) }, { name: 'date', label: 'Tanggal Pelaksanaan', type: 'date' }, { name: 'description', label: 'Keterangan Singkat', type: 'textarea', fullWidth: true, required: false }];
+
+    </script>
+</body>
+</html>
+
